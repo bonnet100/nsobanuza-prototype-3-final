@@ -1,0 +1,6 @@
+node_modules
+dist
+.env
+backend/node_modules
+client/node_modules
+backend/data/nsobanuza.db

@@ -1,0 +1,16 @@
+{
+  "private": true,
+  "name": "nsobanuza",
+  "version": "1.0.0",
+  "workspaces": [
+    "backend",
+    "client",
+    "frontend"
+  ],
+  "scripts": {
+    "server": "npm --prefix backend run server",
+    "dev": "npm --prefix frontend run dev",
+    "dev:client": "npm --prefix client run dev",
+    "dev:frontend": "npm --prefix frontend run dev"
+  }
+}
