@@ -11,9 +11,10 @@ export default function LanguageSwitcher() {
         onChange={(event) => setLanguage(event.target.value)}
         className="rounded-full border border-slate-300 bg-white px-3 py-1 text-sm outline-none"
       >
-        <option value="en">English</option>
-        <option value="fr">Français</option>
-        <option value="rw">Kinyarwanda</option>
+        <option value="en">{t('languageEnglish')}</option>
+        <option value="fr">{t('languageFrench')}</option>
+        <option value="rw">{t('languageKinyarwanda')}</option>
+        <option value="sw">{t('languageSwahili')}</option>
       </select>
     </div>
   );

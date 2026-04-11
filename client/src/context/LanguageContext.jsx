@@ -2,10 +2,11 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import en from '../data/en.json';
 import fr from '../data/fr.json';
 import rw from '../data/rw.json';
+import sw from '../data/sw.json';
 
 const LanguageContext = createContext();
 
-const translations = { en, fr, rw };
+const translations = { en, fr, rw, sw };
 const defaultLanguage = 'en';
 
 export function LanguageProvider({ children }) {

@@ -1,15 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
   color-scheme: light;
+  --nsobanuza-font: 'Fredoka', system-ui, sans-serif;
+  --nsobanuza-primary: #0f766e;
+  --nsobanuza-primary-deep: #115e59;
+  --nsobanuza-primary-soft: #dff4ef;
+  --nsobanuza-accent: #f4c95d;
+  --nsobanuza-warm: #b45309;
+  --nsobanuza-ink: #132238;
 }
 
 body {
   margin: 0;
-  font-family: Inter, system-ui, sans-serif;
-  background: #f8fafc;
+  font-family: var(--nsobanuza-font);
+  background: linear-gradient(180deg, #f8f7f3 0%, #eef5f3 100%);
+  color: var(--nsobanuza-ink);
 }
 
 button,

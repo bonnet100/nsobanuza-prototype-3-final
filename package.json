@@ -9,8 +9,12 @@
   ],
   "scripts": {
     "server": "npm --prefix backend run server",
-    "dev": "npm --prefix frontend run dev",
+    "dev": "npm --prefix client run dev",
+    "dev:full": "concurrently \"npm run server\" \"npm run dev:client\"",
     "dev:client": "npm --prefix client run dev",
     "dev:frontend": "npm --prefix frontend run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   }
 }

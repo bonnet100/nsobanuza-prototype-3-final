@@ -1,0 +1,10 @@
+
+> nsobanuza@1.0.0 server
+> npm --prefix backend run server
+
+
+> nsobanuza-backend@1.0.0 server
+> node server.js
+
+Successfully connected and initialized Nsobanuza database
+Backend running on http://localhost:5000
