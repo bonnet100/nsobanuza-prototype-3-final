@@ -2,7 +2,8 @@ const { pool } = require('../db');
 
 const defaultPlatformSettings = {
   chatbotEnabled: true,
-  aiProviderPreference: 'gemini',
+  aiProviderPreference: 'ollama',
+  ollamaModel: process.env.OLLAMA_MODEL || 'qwen2.5:3b',
   geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
   openaiModel: process.env.OPENAI_MODEL || 'gpt-5-mini',
   huggingFaceModel: process.env.HUGGINGFACE_MODEL || 'Qwen/Qwen2.5-7B-Instruct',
@@ -18,6 +19,11 @@ const storedKeys = {
   aiProviderPreference: {
     key: 'ai_provider_preference',
     parse: (value) => value || defaultPlatformSettings.aiProviderPreference,
+    serialize: (value) => String(value)
+  },
+  ollamaModel: {
+    key: 'ollama_model',
+    parse: (value) => value || defaultPlatformSettings.ollamaModel,
     serialize: (value) => String(value)
   },
   geminiModel: {
@@ -38,7 +44,29 @@ const storedKeys = {
 };
 
 function normalizeProviderPreference(value) {
-  return ['auto', 'gemini', 'huggingface', 'openai', 'builtin'].includes(value) ? value : defaultPlatformSettings.aiProviderPreference;
+  return ['auto', 'ollama', 'gemini', 'huggingface', 'openai', 'builtin'].includes(value)
+    ? value
+    : defaultPlatformSettings.aiProviderPreference;
+}
+
+async function fetchOllamaModels() {
+  try {
+    const baseUrl = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434';
+    const response = await fetch(`${baseUrl}/api/tags`);
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const data = await response.json();
+    return Array.isArray(data.models)
+      ? data.models
+          .map((model) => model?.name)
+          .filter(Boolean)
+      : [];
+  } catch (_error) {
+    return [];
+  }
 }
 
 async function getPlatformSettings() {
@@ -50,6 +78,7 @@ async function getPlatformSettings() {
   );
 
   const values = Object.fromEntries(result.rows.map((row) => [row.key, row.value]));
+  const ollamaAvailableModels = await fetchOllamaModels();
 
   const settings = {
     chatbotEnabled: values[storedKeys.chatbotEnabled.key]
@@ -58,11 +87,14 @@ async function getPlatformSettings() {
     aiProviderPreference: normalizeProviderPreference(
       storedKeys.aiProviderPreference.parse(values[storedKeys.aiProviderPreference.key])
     ),
+    ollamaModel: storedKeys.ollamaModel.parse(values[storedKeys.ollamaModel.key]),
     geminiModel: storedKeys.geminiModel.parse(values[storedKeys.geminiModel.key]),
     openaiModel: storedKeys.openaiModel.parse(values[storedKeys.openaiModel.key]),
     huggingFaceModel: storedKeys.huggingFaceModel.parse(values[storedKeys.huggingFaceModel.key]),
     supportedLanguages: defaultPlatformSettings.supportedLanguages,
+    ollamaAvailableModels,
     providers: {
+      ollamaConfigured: ollamaAvailableModels.length > 0,
       geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
       openaiConfigured: Boolean(process.env.OPENAI_API_KEY),
       huggingFaceConfigured: Boolean(process.env.HUGGINGFACE_API_KEY),
@@ -87,6 +119,13 @@ async function updatePlatformSettings(payload = {}) {
     updates.push({
       key: storedKeys.aiProviderPreference.key,
       value: storedKeys.aiProviderPreference.serialize(normalizeProviderPreference(payload.aiProviderPreference.trim().toLowerCase()))
+    });
+  }
+
+  if (typeof payload.ollamaModel === 'string' && payload.ollamaModel.trim()) {
+    updates.push({
+      key: storedKeys.ollamaModel.key,
+      value: storedKeys.ollamaModel.serialize(payload.ollamaModel.trim())
     });
   }
 

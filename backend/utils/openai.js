@@ -1,6 +1,7 @@
 const OpenAI = require('openai');
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+const OLLAMA_API_BASE = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434';
 
 const systemPrompt = `You are Nsobo, the Nsobanuza health education assistant for youth in Rwanda.
 Stay supportive, practical, stigma-free, and culturally respectful.
@@ -160,6 +161,21 @@ function normalizeHistoryForGemini(history) {
     .filter((item) => item.parts[0].text);
 }
 
+function normalizeHistoryForOllama(history) {
+  if (!Array.isArray(history)) {
+    return [];
+  }
+
+  return history
+    .filter((item) => item && typeof item.text === 'string' && ['user', 'assistant'].includes(item.role))
+    .slice(-6)
+    .map((item) => ({
+      role: item.role === 'assistant' ? 'assistant' : 'user',
+      content: item.text.trim()
+    }))
+    .filter((item) => item.content);
+}
+
 function getOpenAIClient() {
   if (!process.env.OPENAI_API_KEY) {
     return null;
@@ -184,6 +200,45 @@ function createProviderError(message, status, body) {
   error.status = status;
   error.body = body;
   return error;
+}
+
+function getOllamaAvailableModels(platformSettings = {}) {
+  if (!Array.isArray(platformSettings.ollamaAvailableModels)) {
+    return [];
+  }
+
+  return platformSettings.ollamaAvailableModels.filter((model) => typeof model === 'string' && model.trim());
+}
+
+function getOllamaModel(platformSettings) {
+  const requestedModel = platformSettings.ollamaModel || process.env.OLLAMA_MODEL || 'qwen2.5:3b';
+  const availableModels = getOllamaAvailableModels(platformSettings);
+
+  if (availableModels.includes(requestedModel)) {
+    return requestedModel;
+  }
+
+  return availableModels[0] || requestedModel;
+}
+
+function getMissingProviderReason(provider) {
+  if (provider === 'ollama') {
+    return 'ollama_not_configured';
+  }
+
+  if (provider === 'gemini') {
+    return 'gemini_not_configured';
+  }
+
+  if (provider === 'huggingface') {
+    return 'huggingface_not_configured';
+  }
+
+  if (provider === 'openai') {
+    return 'openai_not_configured';
+  }
+
+  return 'provider_not_configured';
 }
 
 function mapProviderError(error) {
@@ -301,6 +356,100 @@ async function askWithGemini(message, language, history, model) {
     model,
     reason: null
   };
+}
+
+async function sendOllamaRequest(message, language, history, model, stream = false) {
+  if (typeof fetch !== 'function') {
+    throw createProviderError('Global fetch is not available in this Node.js runtime.', 500, null);
+  }
+
+  const response = await fetch(`${OLLAMA_API_BASE}/api/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model,
+      stream,
+      messages: [
+        {
+          role: 'system',
+          content: `${systemPrompt}\nAlways answer in ${getLanguageName(language)} with clear, youth-friendly wording.`
+        },
+        ...normalizeHistoryForOllama(history),
+        {
+          role: 'user',
+          content: message
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) {
+    throw createProviderError(
+      `Ollama request failed with status ${response.status}.`,
+      response.status,
+      await response.text()
+    );
+  }
+
+  return response;
+}
+
+async function askWithOllama(message, language, history, model) {
+  const response = await sendOllamaRequest(message, language, history, model, false);
+  const payload = await response.json();
+  const answer = payload?.message?.content?.trim();
+
+  if (!answer) {
+    throw new Error('Ollama returned an empty response.');
+  }
+
+  return {
+    answer,
+    provider: 'ollama',
+    configured: true,
+    model,
+    reason: null
+  };
+}
+
+async function streamWithOllama(message, language, history, model, onDelta) {
+  const response = await sendOllamaRequest(message, language, history, model, true);
+
+  if (!response.body) {
+    throw new Error('Ollama streaming response body is unavailable.');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (!line.trim()) {
+        continue;
+      }
+
+      const payload = JSON.parse(line);
+      const delta = payload?.message?.content || '';
+      if (delta) {
+        onDelta(delta);
+      }
+    }
+
+    if (done) {
+      break;
+    }
+  }
+
+  return true;
 }
 
 async function streamWithGemini(message, language, history, model, onDelta) {
@@ -426,35 +575,43 @@ async function askWithHuggingFace(message, language, history, model) {
 }
 
 function getProviderOrder(aiProviderPreference) {
+  if (aiProviderPreference === 'ollama') {
+    return ['ollama', 'gemini', 'huggingface', 'openai', 'builtin'];
+  }
+
   if (aiProviderPreference === 'gemini') {
-    return ['gemini', 'huggingface', 'openai', 'builtin'];
+    return ['gemini', 'ollama', 'huggingface', 'openai', 'builtin'];
   }
 
   if (aiProviderPreference === 'huggingface') {
-    return ['huggingface', 'gemini', 'openai', 'builtin'];
+    return ['huggingface', 'ollama', 'gemini', 'openai', 'builtin'];
   }
 
   if (aiProviderPreference === 'openai') {
-    return ['openai', 'gemini', 'huggingface', 'builtin'];
+    return ['openai', 'ollama', 'gemini', 'huggingface', 'builtin'];
   }
 
   if (aiProviderPreference === 'builtin') {
     return ['builtin'];
   }
 
-  return ['gemini', 'huggingface', 'openai', 'builtin'];
+  return ['ollama', 'gemini', 'huggingface', 'openai', 'builtin'];
 }
 
 function getProviderModels(platformSettings) {
   return {
+    ollama: getOllamaModel(platformSettings),
     gemini: platformSettings.geminiModel || process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     huggingface: platformSettings.huggingFaceModel || process.env.HUGGINGFACE_MODEL || 'Qwen/Qwen2.5-7B-Instruct',
     openai: platformSettings.openaiModel || process.env.OPENAI_MODEL || 'gpt-5-mini'
   };
 }
 
-function getConfiguredProviders() {
+function getConfiguredProviders(platformSettings = {}, models = {}) {
+  const ollamaAvailableModels = getOllamaAvailableModels(platformSettings);
+
   return {
+    ollama: ollamaAvailableModels.includes(models.ollama || getOllamaModel(platformSettings)),
     gemini: Boolean(process.env.GEMINI_API_KEY),
     openai: Boolean(process.env.OPENAI_API_KEY),
     huggingface: Boolean(process.env.HUGGINGFACE_API_KEY)
@@ -474,7 +631,7 @@ async function askOpenAI(message, language, history = [], platformSettings = {})
 
   const providerOrder = getProviderOrder(platformSettings.aiProviderPreference || 'auto');
   const models = getProviderModels(platformSettings);
-  const configured = getConfiguredProviders();
+  const configured = getConfiguredProviders(platformSettings, models);
   let latestReason = null;
 
   for (const provider of providerOrder) {
@@ -482,22 +639,31 @@ async function askOpenAI(message, language, history = [], platformSettings = {})
       return {
         answer: fallbackResponse(message, language),
         provider: 'fallback',
-        configured: configured.gemini || configured.huggingface || configured.openai,
-        model: configured.gemini ? models.gemini : configured.huggingface ? models.huggingface : configured.openai ? models.openai : null,
+        configured: configured.ollama || configured.gemini || configured.huggingface || configured.openai,
+        model: models.ollama || models.gemini || models.huggingface || models.openai || null,
         reason: latestReason || 'builtin_fallback'
       };
     }
 
+    if (!configured[provider]) {
+      latestReason = getMissingProviderReason(provider);
+      continue;
+    }
+
     try {
-      if (provider === 'gemini' && configured.gemini) {
+      if (provider === 'ollama') {
+        return await askWithOllama(message, language, history, models.ollama);
+      }
+
+      if (provider === 'gemini') {
         return await askWithGemini(message, language, history, models.gemini);
       }
 
-      if (provider === 'huggingface' && configured.huggingface) {
+      if (provider === 'huggingface') {
         return await askWithHuggingFace(message, language, history, models.huggingface);
       }
 
-      if (provider === 'openai' && configured.openai) {
+      if (provider === 'openai') {
         return await askWithOpenAI(message, language, history, models.openai);
       }
     } catch (error) {
@@ -509,8 +675,8 @@ async function askOpenAI(message, language, history = [], platformSettings = {})
   return {
     answer: fallbackResponse(message, language),
     provider: 'fallback',
-    configured: configured.gemini || configured.huggingface || configured.openai,
-    model: configured.gemini ? models.gemini : configured.huggingface ? models.huggingface : configured.openai ? models.openai : null,
+    configured: configured.ollama || configured.gemini || configured.huggingface || configured.openai,
+    model: models.ollama || models.gemini || models.huggingface || models.openai || null,
     reason: latestReason || 'provider_not_configured'
   };
 }
@@ -527,36 +693,47 @@ async function streamAssistantResponse(message, language, history = [], platform
 
   const providerOrder = getProviderOrder(platformSettings.aiProviderPreference || 'auto');
   const models = getProviderModels(platformSettings);
-  const configured = getConfiguredProviders();
+  const configured = getConfiguredProviders(platformSettings, models);
   let latestReason = null;
 
   for (const provider of providerOrder) {
     if (provider === 'builtin') {
       onMeta({
         provider: 'fallback',
-        configured: configured.gemini || configured.huggingface || configured.openai,
-        model: configured.gemini ? models.gemini : configured.huggingface ? models.huggingface : configured.openai ? models.openai : null,
+        configured: configured.ollama || configured.gemini || configured.huggingface || configured.openai,
+        model: models.ollama || models.gemini || models.huggingface || models.openai || null,
         reason: latestReason || 'builtin_fallback'
       });
       onDelta(fallbackResponse(message, language));
       return;
     }
 
+    if (!configured[provider]) {
+      latestReason = getMissingProviderReason(provider);
+      continue;
+    }
+
     try {
-      if (provider === 'gemini' && configured.gemini) {
+      if (provider === 'ollama') {
+        onMeta({ provider: 'ollama', configured: true, model: models.ollama, reason: null });
+        await streamWithOllama(message, language, history, models.ollama, onDelta);
+        return;
+      }
+
+      if (provider === 'gemini') {
         onMeta({ provider: 'gemini', configured: true, model: models.gemini, reason: null });
         await streamWithGemini(message, language, history, models.gemini, onDelta);
         return;
       }
 
-      if (provider === 'huggingface' && configured.huggingface) {
+      if (provider === 'huggingface') {
         const result = await askWithHuggingFace(message, language, history, models.huggingface);
         onMeta(result);
         onDelta(result.answer);
         return;
       }
 
-      if (provider === 'openai' && configured.openai) {
+      if (provider === 'openai') {
         const result = await askWithOpenAI(message, language, history, models.openai);
         onMeta(result);
         onDelta(result.answer);
@@ -570,8 +747,8 @@ async function streamAssistantResponse(message, language, history = [], platform
 
   onMeta({
     provider: 'fallback',
-    configured: configured.gemini || configured.huggingface || configured.openai,
-    model: configured.gemini ? models.gemini : configured.huggingface ? models.huggingface : configured.openai ? models.openai : null,
+    configured: configured.ollama || configured.gemini || configured.huggingface || configured.openai,
+    model: models.ollama || models.gemini || models.huggingface || models.openai || null,
     reason: latestReason || 'provider_not_configured'
   });
   onDelta(fallbackResponse(message, language));

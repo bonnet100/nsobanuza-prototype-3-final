@@ -799,10 +799,11 @@ app.get('/admin/platform-settings', authenticateToken, requireAdmin, async (_req
 });
 
 app.patch('/admin/platform-settings', authenticateToken, requireAdmin, async (req, res) => {
-  const { chatbotEnabled, aiProviderPreference, geminiModel, openaiModel, huggingFaceModel } = req.body || {};
+  const { chatbotEnabled, aiProviderPreference, ollamaModel, geminiModel, openaiModel, huggingFaceModel } = req.body || {};
   const settings = await updatePlatformSettings({
     chatbotEnabled,
     aiProviderPreference,
+    ollamaModel,
     geminiModel,
     openaiModel,
     huggingFaceModel

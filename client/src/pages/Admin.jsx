@@ -15,12 +15,15 @@ const initialVideoForm = {
 
 const initialPlatformSettings = {
   chatbotEnabled: true,
-  aiProviderPreference: 'gemini',
+  aiProviderPreference: 'ollama',
+  ollamaModel: 'qwen2.5:3b',
   geminiModel: 'gemini-2.5-flash',
   openaiModel: 'gpt-5-mini',
   huggingFaceModel: 'Qwen/Qwen2.5-7B-Instruct',
   supportedLanguages: ['en', 'fr', 'rw', 'sw'],
+  ollamaAvailableModels: [],
   providers: {
+    ollamaConfigured: false,
     geminiConfigured: false,
     openaiConfigured: false,
     huggingFaceConfigured: false,
@@ -188,6 +191,7 @@ export default function Admin({ user }) {
       const response = await api.patch('/admin/platform-settings', {
         chatbotEnabled: platformSettings.chatbotEnabled,
         aiProviderPreference: platformSettings.aiProviderPreference,
+        ollamaModel: platformSettings.ollamaModel,
         geminiModel: platformSettings.geminiModel,
         openaiModel: platformSettings.openaiModel,
         huggingFaceModel: platformSettings.huggingFaceModel
@@ -444,6 +448,7 @@ export default function Admin({ user }) {
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none"
                 >
                   <option value="auto">{t('adminAiProviderAuto')}</option>
+                  <option value="ollama">{t('adminAiProviderOllama')}</option>
                   <option value="gemini">{t('adminAiProviderGemini')}</option>
                   <option value="huggingface">{t('adminAiProviderHuggingFace')}</option>
                   <option value="openai">{t('adminAiProviderOpenAI')}</option>
@@ -452,11 +457,24 @@ export default function Admin({ user }) {
               </div>
 
               <input
+                value={platformSettings.ollamaModel}
+                onChange={updatePlatformField('ollamaModel')}
+                placeholder={t('adminOllamaModel')}
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none"
+              />
+              <input
                 value={platformSettings.geminiModel}
                 onChange={updatePlatformField('geminiModel')}
                 placeholder={t('adminGeminiModel')}
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none"
               />
+
+              {platformSettings.ollamaAvailableModels?.length ? (
+                <div className="rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{t('adminOllamaAvailableModels')}</p>
+                  <p className="mt-2">{platformSettings.ollamaAvailableModels.join(', ')}</p>
+                </div>
+              ) : null}
               <input
                 value={platformSettings.openaiModel}
                 onChange={updatePlatformField('openaiModel')}
@@ -480,6 +498,12 @@ export default function Admin({ user }) {
               <div className="rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">
                 <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{t('adminProviderStatus')}</p>
                 <div className="mt-3 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span>Ollama</span>
+                    <span className={platformSettings.providers?.ollamaConfigured ? 'text-emerald-700' : 'text-amber-700'}>
+                      {platformSettings.providers?.ollamaConfigured ? t('adminConfigured') : t('adminNotConfigured')}
+                    </span>
+                  </div>
                   <div className="flex items-center justify-between gap-3">
                     <span>Gemini</span>
                     <span className={platformSettings.providers?.geminiConfigured ? 'text-emerald-700' : 'text-amber-700'}>

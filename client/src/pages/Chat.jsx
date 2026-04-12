@@ -182,7 +182,9 @@ export default function Chat() {
           <section className="rounded-[2rem] border border-white/70 bg-white/92 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
             <h3 className="text-lg font-semibold text-slate-950">Chat status</h3>
             <p className="mt-3 text-sm leading-7 text-slate-600">
-              {chatInfo.provider === 'gemini'
+              {chatInfo.provider === 'ollama'
+                ? `${t('chatStatusOllamaLive')}${chatInfo.model ? ` ${chatInfo.model}.` : '.'}`
+                : chatInfo.provider === 'gemini'
                 ? `${t('chatStatusGeminiLive')}${chatInfo.model ? ` ${chatInfo.model}.` : '.'}`
                 : chatInfo.provider === 'openai'
                 ? `${t('chatStatusOpenAiLive')}${chatInfo.model ? ` ${chatInfo.model}.` : '.'}`
@@ -191,11 +193,13 @@ export default function Chat() {
                 : chatInfo.provider === 'fallback'
                   ? chatInfo.reason === 'chatbot_disabled'
                     ? t('chatStatusDisabled')
+                    : chatInfo.reason === 'ollama_not_configured'
+                      ? t('chatStatusOllamaSetup')
                     : chatInfo.reason === 'insufficient_quota'
                       ? t('chatStatusQuotaFallback')
-                      : chatInfo.reason === 'invalid_api_key'
-                        ? t('chatStatusKeyFallback')
-                        : chatInfo.reason === 'connection_error'
+                    : chatInfo.reason === 'invalid_api_key'
+                      ? t('chatStatusKeyFallback')
+                    : chatInfo.reason === 'connection_error'
                           ? t('chatStatusConnectionFallback')
                           : t('chatStatusBuiltIn')
                   : t('chatStatusSetupLive')}
