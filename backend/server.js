@@ -11,10 +11,11 @@ const { getPlatformSettings, updatePlatformSettings } = require('./utils/platfor
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 app.use(cors());
+
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 5000);
-
 const JWT_SECRET = process.env.JWT_SECRET;
+
 if (!JWT_SECRET) {
   console.error('FATAL ERROR: JWT_SECRET is not defined in .env.');
   process.exit(1);
@@ -142,16 +143,13 @@ function publicReview(review) {
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.split(' ')[1];
-
   if (!token) {
     return res.status(401).json({ error: 'Token missing' });
   }
-
   return jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) {
       return res.status(403).json({ error: 'Invalid token' });
     }
-
     req.user = user;
     return next();
   });
@@ -161,7 +159,6 @@ const requireAdmin = (req, res, next) => {
   if (req.user.role !== 'admin') {
     return res.sendStatus(403);
   }
-
   return next();
 };
 
@@ -174,31 +171,26 @@ app.get('/health', (_req, res) => {
 
 app.post('/auth/register', asyncHandler(async (req, res) => {
   const { phone, username, password } = req.body || {};
-
   if (!phone || !username || !password) {
     return res.status(400).json({ error: 'Phone, username, and password are required.' });
   }
-
   try {
     const existingUser = await pool.query(
       `SELECT id FROM users
-       WHERE LOWER(username) = LOWER($1) OR phone = $2
-       LIMIT 1`,
+      WHERE LOWER(username) = LOWER($1) OR phone = $2
+      LIMIT 1`,
       [username.trim(), phone.trim()]
     );
-
     if (existingUser.rows[0]) {
       return res.status(400).json({ error: 'Username or phone number already exists.' });
     }
-
     const hashed = await bcrypt.hash(password, 10);
     const result = await pool.query(
       `INSERT INTO users (phone, username, password, role, verified, is_active, kyc_status)
-       VALUES ($1, $2, $3, 'user', true, true, 'approved')
-       RETURNING *`,
+      VALUES ($1, $2, $3, 'user', true, true, 'approved')
+      RETURNING *`,
       [phone.trim(), username.trim(), hashed]
     );
-
     return res.json({
       success: true,
       message: 'Account created successfully. Log in with your username and password.',
@@ -228,36 +220,34 @@ app.post('/auth/register-professional', asyncHandler(async (req, res) => {
     voiceChatPrice,
     videoChatPrice
   } = req.body || {};
-
   if (!fullName || !email || !password || !licenseNumber || !idCardNumber) {
     return res.status(400).json({
       error: 'Full name, email, password, license number, and ID card number are required.'
     });
   }
-
   try {
     const hashed = await bcrypt.hash(password, 10);
     const result = await pool.query(
       `INSERT INTO users (
-        username,
-        full_name,
-        email,
-        password,
-        role,
-        verified,
-        is_active,
-        license_number,
-        organisation,
-        specialty,
-        license_document,
-        id_card_number,
-        kyc_status,
-        bio,
-        text_chat_price,
-        voice_chat_price,
-        video_chat_price
+      username,
+      full_name,
+      email,
+      password,
+      role,
+      verified,
+      is_active,
+      license_number,
+      organisation,
+      specialty,
+      license_document,
+      id_card_number,
+      kyc_status,
+      bio,
+      text_chat_price,
+      voice_chat_price,
+      video_chat_price
       ) VALUES (
-        $1, $2, $3, $4, 'professional', false, true, $5, $6, $7, $8, $9, 'pending', $10, $11, $12, $13
+      $1, $2, $3, $4, 'professional', false, true, $5, $6, $7, $8, $9, 'pending', $10, $11, $12, $13
       )
       RETURNING *`,
       [
@@ -276,7 +266,6 @@ app.post('/auth/register-professional', asyncHandler(async (req, res) => {
         parseMoney(videoChatPrice)
       ]
     );
-
     return res.json({
       success: true,
       message: 'Professional registration submitted. Admin review and KYC approval are required before verification.',
@@ -293,32 +282,25 @@ app.post('/auth/register-professional', asyncHandler(async (req, res) => {
 
 app.post('/auth/login', asyncHandler(async (req, res) => {
   const { identifier, password, accountType = 'user' } = req.body || {};
-
   if (!identifier || !password) {
     return res.status(400).json({ error: 'Identifier and password are required.' });
   }
-
   const lookupField = accountType === 'professional' ? 'email' : 'username';
-
   try {
     const result = await pool.query(
       `SELECT * FROM users WHERE LOWER(${lookupField}) = LOWER($1) LIMIT 1`,
       [String(identifier).trim()]
     );
     const user = result.rows[0];
-
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ error: 'Invalid credentials.' });
     }
-
     if (!user.is_active) {
       return res.status(403).json({ error: 'Account suspended.' });
     }
-
     if (accountType === 'professional' && user.role !== 'professional') {
       return res.status(403).json({ error: 'Use the user login form for this account.' });
     }
-
     const token = createToken(user);
     return res.json({ token, user: publicUser(user) });
   } catch (err) {
@@ -343,28 +325,25 @@ app.post('/posts', authenticateToken, asyncHandler(async (req, res) => {
   if (!['professional', 'admin'].includes(req.user.role)) {
     return res.sendStatus(403);
   }
-
   const { content, category, mediaUrl, mediaType, ctaLabel, ctaUrl, isSponsored } = req.body || {};
   if (!content || !String(content).trim()) {
     return res.status(400).json({ error: 'Post content is required.' });
   }
-
   const authorResult = await pool.query('SELECT * FROM users WHERE id = $1 LIMIT 1', [req.user.id]);
   const author = authorResult.rows[0];
-
   const result = await pool.query(
     `INSERT INTO posts (
-      author_id,
-      author_name,
-      category,
-      content,
-      media_url,
-      media_type,
-      is_sponsored,
-      status,
-      cta_label,
-      cta_url,
-      created_at
+    author_id,
+    author_name,
+    category,
+    content,
+    media_url,
+    media_type,
+    is_sponsored,
+    status,
+    cta_label,
+    cta_url,
+    created_at
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
     RETURNING *`,
     [
@@ -380,14 +359,13 @@ app.post('/posts', authenticateToken, asyncHandler(async (req, res) => {
       ctaUrl || ''
     ]
   );
-
   return res.json({
     success: true,
     post: publicPost(result.rows[0]),
     message:
       req.user.role === 'admin'
-        ? 'Post published successfully.'
-        : 'Post submitted for admin review.'
+      ? 'Post published successfully.'
+      : 'Post submitted for admin review.'
   });
 }));
 
@@ -407,18 +385,15 @@ app.get('/providers', asyncHandler(async (req, res) => {
   const { specialty } = req.query;
   const params = [];
   let query = `
-    SELECT *
-    FROM users
-    WHERE role = 'professional' AND verified = true AND is_active = true
+  SELECT *
+  FROM users
+  WHERE role = 'professional' AND verified = true AND is_active = true
   `;
-
   if (specialty && specialty !== 'All') {
     params.push(specialty);
     query += ` AND specialty = $${params.length}`;
   }
-
   query += ' ORDER BY average_rating DESC NULLS LAST, created_at DESC';
-
   const result = await pool.query(query, params);
   return res.json({
     providers: result.rows.map((provider) => ({
@@ -430,10 +405,10 @@ app.get('/providers', asyncHandler(async (req, res) => {
 app.get('/providers/:id/reviews', asyncHandler(async (req, res) => {
   const result = await pool.query(
     `SELECT pr.*, COALESCE(u.full_name, u.username, 'Nsobanuza user') AS reviewer_name
-     FROM provider_reviews pr
-     LEFT JOIN users u ON u.id = pr.user_id
-     WHERE professional_id = $1
-     ORDER BY pr.created_at DESC`,
+    FROM provider_reviews pr
+    LEFT JOIN users u ON u.id = pr.user_id
+    WHERE professional_id = $1
+    ORDER BY pr.created_at DESC`,
     [req.params.id]
   );
   return res.json({ reviews: result.rows.map(publicReview) });
@@ -443,33 +418,27 @@ app.post('/providers/consultations/request', authenticateToken, asyncHandler(asy
   if (!['user', 'admin'].includes(req.user.role)) {
     return res.sendStatus(403);
   }
-
   const { professionalId, message, consultationType = 'text' } = req.body || {};
   if (!professionalId || !message || !consultationChannels[consultationType]) {
     return res.status(400).json({ error: 'Professional, message, and consultation type are required.' });
   }
-
   const providerResult = await pool.query(
     `SELECT * FROM users
-     WHERE id = $1 AND role = 'professional' AND verified = true AND is_active = true
-     LIMIT 1`,
+    WHERE id = $1 AND role = 'professional' AND verified = true AND is_active = true
+    LIMIT 1`,
     [professionalId]
   );
   const provider = providerResult.rows[0];
-
   if (!provider) {
     return res.status(404).json({ error: 'Provider not found.' });
   }
-
   const price = toNumber(provider[consultationChannels[consultationType]]);
-
   const result = await pool.query(
     `INSERT INTO consultations (user_id, professional_id, channel, price, status, message, created_at)
-     VALUES ($1, $2, $3, $4, 'requested', $5, NOW())
-     RETURNING *`,
+    VALUES ($1, $2, $3, $4, 'requested', $5, NOW())
+    RETURNING *`,
     [req.user.id, professionalId, consultationType, price, String(message).trim()]
   );
-
   return res.json({
     success: true,
     consultation: result.rows[0],
@@ -482,51 +451,44 @@ app.get('/consultations', authenticateToken, asyncHandler(async (req, res) => {
   const field = req.user.role === 'professional' ? 'professional_id' : 'user_id';
   const result = await pool.query(
     `SELECT
-      c.*,
-      COALESCE(u.full_name, u.username, u.email) AS user_name,
-      COALESCE(p.full_name, p.organisation, p.email) AS professional_name,
-      pr.id AS review_id,
-      pr.rating AS review_rating,
-      pr.comment AS review_comment
-     FROM consultations c
-     LEFT JOIN users u ON u.id = c.user_id
-     LEFT JOIN users p ON p.id = c.professional_id
-     LEFT JOIN provider_reviews pr ON pr.consultation_id = c.id
-     WHERE c.${field} = $1
-     ORDER BY c.created_at DESC`,
+    c.*,
+    COALESCE(u.full_name, u.username, u.email) AS user_name,
+    COALESCE(p.full_name, p.organisation, p.email) AS professional_name,
+    pr.id AS review_id,
+    pr.rating AS review_rating,
+    pr.comment AS review_comment
+    FROM consultations c
+    LEFT JOIN users u ON u.id = c.user_id
+    LEFT JOIN users p ON p.id = c.professional_id
+    LEFT JOIN provider_reviews pr ON pr.consultation_id = c.id
+    WHERE c.${field} = $1
+    ORDER BY c.created_at DESC`,
     [req.user.id]
   );
-
   return res.json({ consultations: result.rows });
 }));
 
 app.patch('/consultations/:id/status', authenticateToken, asyncHandler(async (req, res) => {
   const { status } = req.body || {};
   const allowed = ['requested', 'scheduled', 'completed', 'declined'];
-
   if (!allowed.includes(status)) {
     return res.status(400).json({ error: 'Invalid status.' });
   }
-
   const consultationResult = await pool.query(
     'SELECT * FROM consultations WHERE id = $1 LIMIT 1',
     [req.params.id]
   );
   const consultation = consultationResult.rows[0];
-
   if (!consultation) {
     return res.status(404).json({ error: 'Consultation not found.' });
   }
-
   const ownsConsultation =
     req.user.role === 'admin' ||
     consultation.user_id === req.user.id ||
     consultation.professional_id === req.user.id;
-
   if (!ownsConsultation) {
     return res.sendStatus(403);
   }
-
   await pool.query('UPDATE consultations SET status = $1 WHERE id = $2', [status, req.params.id]);
   return res.json({ success: true });
 }));
@@ -535,39 +497,32 @@ app.post('/providers/:id/reviews', authenticateToken, asyncHandler(async (req, r
   if (!['user', 'admin'].includes(req.user.role)) {
     return res.sendStatus(403);
   }
-
   const { consultationId, rating, comment } = req.body || {};
   const numericRating = Number(rating);
-
   if (!consultationId || !Number.isInteger(numericRating) || numericRating < 1 || numericRating > 5) {
     return res.status(400).json({ error: 'A consultation and rating between 1 and 5 are required.' });
   }
-
   const consultationResult = await pool.query(
     `SELECT * FROM consultations
-     WHERE id = $1 AND user_id = $2 AND professional_id = $3
-     LIMIT 1`,
+    WHERE id = $1 AND user_id = $2 AND professional_id = $3
+    LIMIT 1`,
     [consultationId, req.user.id, req.params.id]
   );
   const consultation = consultationResult.rows[0];
-
   if (!consultation) {
     return res.status(404).json({ error: 'Consultation not found for this provider.' });
   }
-
   await pool.query(
     `INSERT INTO provider_reviews (consultation_id, user_id, professional_id, rating, comment, created_at)
-     VALUES ($1, $2, $3, $4, $5, NOW())
-     ON CONFLICT (consultation_id)
-     DO UPDATE SET rating = EXCLUDED.rating, comment = EXCLUDED.comment, created_at = NOW()`,
+    VALUES ($1, $2, $3, $4, $5, NOW())
+    ON CONFLICT (consultation_id)
+    DO UPDATE SET rating = EXCLUDED.rating, comment = EXCLUDED.comment, created_at = NOW()`,
     [consultationId, req.user.id, req.params.id, numericRating, comment || '']
   );
-
   const aggregate = await pool.query(
     'SELECT AVG(rating)::numeric(3,2) AS average_rating, COUNT(*) AS review_count FROM provider_reviews WHERE professional_id = $1',
     [req.params.id]
   );
-
   await pool.query(
     'UPDATE users SET average_rating = $1, review_count = $2 WHERE id = $3',
     [
@@ -576,7 +531,6 @@ app.post('/providers/:id/reviews', authenticateToken, asyncHandler(async (req, r
       req.params.id
     ]
   );
-
   return res.json({ success: true });
 }));
 
@@ -585,7 +539,6 @@ app.post('/tracking', authenticateToken, asyncHandler(async (req, res) => {
   if (!period_start_date || !mood || !symptoms) {
     return res.status(400).json({ error: 'Period date, mood, and symptoms are required.' });
   }
-
   try {
     await pool.query(
       'INSERT INTO tracking_logs (user_id, period_start_date, mood, symptoms) VALUES ($1, $2, $3, $4)',
@@ -604,7 +557,6 @@ app.get('/tracking/predict', authenticateToken, asyncHandler(async (req, res) =>
     [req.user.id]
   );
   const rows = result.rows;
-
   if (rows.length === 0) {
     return res.json({
       prediction: null,
@@ -615,7 +567,6 @@ app.get('/tracking/predict', authenticateToken, asyncHandler(async (req, res) =>
       advice: 'Log your first period date so Nsobanuza can start learning your cycle.'
     });
   }
-
   const dates = rows.map((item) => new Date(item.period_start_date));
   const cycles = [];
   for (let index = 1; index < dates.length; index += 1) {
@@ -624,29 +575,23 @@ app.get('/tracking/predict', authenticateToken, asyncHandler(async (req, res) =>
       cycles.push(diffDays);
     }
   }
-
   const averageCycleLength = cycles.length
     ? Math.round(cycles.reduce((sum, value) => sum + value, 0) / cycles.length)
     : 28;
   const latestDate = dates[dates.length - 1];
   const nextPeriodDate = new Date(latestDate);
   nextPeriodDate.setDate(nextPeriodDate.getDate() + averageCycleLength);
-
   const ovulationDate = new Date(nextPeriodDate);
   ovulationDate.setDate(ovulationDate.getDate() - 14);
-
   const fertileStart = new Date(ovulationDate);
   fertileStart.setDate(fertileStart.getDate() - 5);
-
   const fertileEnd = new Date(ovulationDate);
   fertileEnd.setDate(fertileEnd.getDate() + 1);
-
   const variance =
     cycles.length > 1
-      ? cycles.reduce((sum, value) => sum + Math.pow(value - averageCycleLength, 2), 0) / cycles.length
-      : 0;
+    ? cycles.reduce((sum, value) => sum + Math.pow(value - averageCycleLength, 2), 0) / cycles.length
+    : 0;
   const regularityScore = Math.max(45, Math.min(98, Math.round(100 - Math.sqrt(variance) * 3)));
-
   let advice = 'Nsobanuza is learning your cycle and will improve predictions as you add more logs.';
   if (cycles.length >= 2 && averageCycleLength >= 25 && averageCycleLength <= 35) {
     advice =
@@ -655,7 +600,6 @@ app.get('/tracking/predict', authenticateToken, asyncHandler(async (req, res) =>
     advice =
       'Your cycle shows some variation. This can be normal, but if irregularity continues or symptoms become severe, consider speaking with a verified provider.';
   }
-
   return res.json({
     prediction: `Next period around ${nextPeriodDate.toDateString()}`,
     nextPeriodDate,
@@ -673,7 +617,6 @@ app.get('/tracking/:user_id', authenticateToken, asyncHandler(async (req, res) =
   if (Number(req.params.user_id) !== req.user.id && req.user.role !== 'admin') {
     return res.sendStatus(403);
   }
-
   const result = await pool.query(
     'SELECT * FROM tracking_logs WHERE user_id = $1 ORDER BY period_start_date DESC',
     [req.params.user_id]
@@ -683,16 +626,14 @@ app.get('/tracking/:user_id', authenticateToken, asyncHandler(async (req, res) =
 
 app.post('/ad-removal/watch', authenticateToken, asyncHandler(async (req, res) => {
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
   await pool.query('UPDATE users SET ad_removal_expires_at = $1 WHERE id = $2', [expiresAt, req.user.id]);
   await pool.query(
     `INSERT INTO ad_removal (user_id, expires_at)
-     VALUES ($1, $2)
-     ON CONFLICT (user_id)
-     DO UPDATE SET expires_at = EXCLUDED.expires_at`,
+    VALUES ($1, $2)
+    ON CONFLICT (user_id)
+    DO UPDATE SET expires_at = EXCLUDED.expires_at`,
     [req.user.id, expiresAt]
   );
-
   return res.json({ expires_at: expiresAt });
 }));
 
@@ -704,7 +645,6 @@ app.get('/admin/overview', authenticateToken, requireAdmin, asyncHandler(async (
     pool.query("SELECT COUNT(*) FROM posts WHERE status = 'pending'"),
     pool.query("SELECT COUNT(*) FROM videos WHERE is_partner_ad = true")
   ]);
-
   return res.json({
     overview: {
       totalUsers: Number(total.rows[0].count),
@@ -761,23 +701,21 @@ app.post('/admin/posts/:id/approve', authenticateToken, requireAdmin, asyncHandl
 
 app.post('/admin/videos', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
   const { title, description, url, category, thumbnail, createdBy, isPartnerAd = true } = req.body || {};
-
   if (!title || !url) {
     return res.status(400).json({ error: 'Video title and URL are required.' });
   }
-
   const result = await pool.query(
     `INSERT INTO videos (
-      title,
-      description,
-      url,
-      category,
-      thumbnail,
-      created_by,
-      approved,
-      is_partner_ad,
-      muted_by_default,
-      created_at
+    title,
+    description,
+    url,
+    category,
+    thumbnail,
+    created_by,
+    approved,
+    is_partner_ad,
+    muted_by_default,
+    created_at
     ) VALUES ($1, $2, $3, $4, $5, $6, true, $7, true, NOW())
     RETURNING *`,
     [
@@ -790,7 +728,6 @@ app.post('/admin/videos', authenticateToken, requireAdmin, asyncHandler(async (r
       Boolean(isPartnerAd)
     ]
   );
-
   return res.json({ success: true, video: publicVideo(result.rows[0]) });
 }));
 
@@ -815,7 +752,6 @@ app.patch('/admin/platform-settings', authenticateToken, requireAdmin, asyncHand
     openaiModel,
     huggingFaceModel
   });
-
   return res.json({ success: true, settings });
 }));
 
@@ -824,12 +760,10 @@ app.use('/chat', authenticateToken, require('./chat'));
 const clientDistPath = path.join(__dirname, '..', 'client', 'dist');
 if (fs.existsSync(clientDistPath)) {
   app.use(express.static(clientDistPath));
-
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/auth') || req.path.startsWith('/admin') || req.path.startsWith('/chat')) {
       return next();
     }
-
     if (
       req.path.startsWith('/posts') ||
       req.path.startsWith('/videos') ||
@@ -842,55 +776,56 @@ if (fs.existsSync(clientDistPath)) {
     ) {
       return next();
     }
-
     return res.sendFile(path.join(clientDistPath, 'index.html'));
   });
 }
 
 app.use((error, _req, res, next) => {
   console.error('Unhandled request error:', error);
-
   if (res.headersSent) {
     return next(error);
   }
-
   return res.status(error.status || 500).json({
     error: error.publicMessage || 'Server error'
   });
 });
 
+// MODIFIED FOR VERCEL COMPATIBILITY
 const startServer = async () => {
   try {
     await initDb();
+    console.log('Database connected');
   } catch (err) {
-    console.error('CRITICAL: Database initialization failed. Server will not start.');
-    process.exit(1);
+    console.error('Database connection failed:', err);
+    // On serverless, we log the error but don't force-exit so logs can be viewed
   }
 
-  const server = app.listen(PORT, HOST, () => console.log(`Backend running on http://${HOST}:${PORT}`));
-
-  server.on('error', (error) => {
-    if (error.code === 'EADDRINUSE') {
-      console.error(
-        `Port ${PORT} is already in use. Stop the existing backend process or change PORT in backend/.env before starting this server again.`
-      );
-      process.exit(1);
-    }
-
-    console.error('Failed to start backend server:', error);
-    process.exit(1);
-  });
-
-  // Support graceful shutdown for local development and cloud providers like Render
-  const shutdown = (signal) => {
-    console.log(`\nReceived ${signal}. Closing server...`);
-    server.close(() => {
-      console.log('Server shut down successfully.');
-      process.exit(0);
+  // Only start a listening server if we are NOT on Vercel
+  if (process.env.NODE_ENV !== 'production') {
+    const server = app.listen(PORT, HOST, () => console.log(`Backend running on http://${HOST}:${PORT}`));
+    
+    server.on('error', (error) => {
+      if (error.code === 'EADDRINUSE') {
+        console.error(`Port ${PORT} is already in use.`);
+        process.exit(1);
+      }
+      console.error('Failed to start server:', error);
     });
-  };
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+    // Graceful shutdown logic
+    const shutdown = (signal) => {
+      console.log(`\nReceived ${signal}. Closing server...`);
+      server.close(() => {
+        console.log('Server shut down successfully.');
+        process.exit(0);
+      });
+    };
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+  }
 };
 
 startServer();
+
+// REQUIRED FOR VERCEL
+module.exports = app;
