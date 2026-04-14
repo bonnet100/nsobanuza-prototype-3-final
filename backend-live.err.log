@@ -1,0 +1,1 @@
+Port 5000 is already in use. Stop the existing backend process or change PORT in backend/.env before starting this server again.

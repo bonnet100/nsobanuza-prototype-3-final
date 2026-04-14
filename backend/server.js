@@ -165,11 +165,14 @@ const requireAdmin = (req, res, next) => {
   return next();
 };
 
+const asyncHandler = (handler) => (req, res, next) =>
+  Promise.resolve(handler(req, res, next)).catch(next);
+
 app.get('/health', (_req, res) => {
   res.json({ ok: true, service: 'nsobanuza-backend' });
 });
 
-app.post('/auth/register', async (req, res) => {
+app.post('/auth/register', asyncHandler(async (req, res) => {
   const { phone, username, password } = req.body || {};
 
   if (!phone || !username || !password) {
@@ -208,9 +211,9 @@ app.post('/auth/register', async (req, res) => {
       .status(400)
       .json({ error: duplicate ? 'Username or phone number already exists.' : 'Registration failed.' });
   }
-});
+}));
 
-app.post('/auth/register-professional', async (req, res) => {
+app.post('/auth/register-professional', asyncHandler(async (req, res) => {
   const {
     fullName,
     email,
@@ -286,9 +289,9 @@ app.post('/auth/register-professional', async (req, res) => {
       .status(400)
       .json({ error: duplicate ? 'That email or license number is already in use.' : 'Registration failed.' });
   }
-});
+}));
 
-app.post('/auth/login', async (req, res) => {
+app.post('/auth/login', asyncHandler(async (req, res) => {
   const { identifier, password, accountType = 'user' } = req.body || {};
 
   if (!identifier || !password) {
@@ -322,21 +325,21 @@ app.post('/auth/login', async (req, res) => {
     console.error('Login error:', err.message);
     return res.status(500).json({ error: 'Unable to log in right now.' });
   }
-});
+}));
 
-app.get('/auth/me', authenticateToken, async (req, res) => {
+app.get('/auth/me', authenticateToken, asyncHandler(async (req, res) => {
   const result = await pool.query('SELECT * FROM users WHERE id = $1 LIMIT 1', [req.user.id]);
   return res.json({ user: result.rows[0] ? publicUser(result.rows[0]) : null });
-});
+}));
 
-app.get('/posts', async (_req, res) => {
+app.get('/posts', asyncHandler(async (_req, res) => {
   const result = await pool.query(
     "SELECT * FROM posts WHERE status = 'approved' ORDER BY created_at DESC"
   );
   return res.json({ posts: result.rows.map(publicPost) });
-});
+}));
 
-app.post('/posts', authenticateToken, async (req, res) => {
+app.post('/posts', authenticateToken, asyncHandler(async (req, res) => {
   if (!['professional', 'admin'].includes(req.user.role)) {
     return res.sendStatus(403);
   }
@@ -386,21 +389,21 @@ app.post('/posts', authenticateToken, async (req, res) => {
         ? 'Post published successfully.'
         : 'Post submitted for admin review.'
   });
-});
+}));
 
-app.get('/videos', async (_req, res) => {
+app.get('/videos', asyncHandler(async (_req, res) => {
   const result = await pool.query(
     'SELECT * FROM videos WHERE approved = true ORDER BY created_at DESC'
   );
   return res.json({ videos: result.rows.map(publicVideo) });
-});
+}));
 
-app.get('/books', async (_req, res) => {
+app.get('/books', asyncHandler(async (_req, res) => {
   const result = await pool.query('SELECT * FROM books ORDER BY created_at DESC');
   return res.json({ books: result.rows.map(publicBook) });
-});
+}));
 
-app.get('/providers', async (req, res) => {
+app.get('/providers', asyncHandler(async (req, res) => {
   const { specialty } = req.query;
   const params = [];
   let query = `
@@ -422,9 +425,9 @@ app.get('/providers', async (req, res) => {
       ...publicUser(provider)
     }))
   });
-});
+}));
 
-app.get('/providers/:id/reviews', async (req, res) => {
+app.get('/providers/:id/reviews', asyncHandler(async (req, res) => {
   const result = await pool.query(
     `SELECT pr.*, COALESCE(u.full_name, u.username, 'Nsobanuza user') AS reviewer_name
      FROM provider_reviews pr
@@ -434,9 +437,9 @@ app.get('/providers/:id/reviews', async (req, res) => {
     [req.params.id]
   );
   return res.json({ reviews: result.rows.map(publicReview) });
-});
+}));
 
-app.post('/providers/consultations/request', authenticateToken, async (req, res) => {
+app.post('/providers/consultations/request', authenticateToken, asyncHandler(async (req, res) => {
   if (!['user', 'admin'].includes(req.user.role)) {
     return res.sendStatus(403);
   }
@@ -473,9 +476,9 @@ app.post('/providers/consultations/request', authenticateToken, async (req, res)
     price,
     message: 'Consultation requested successfully.'
   });
-});
+}));
 
-app.get('/consultations', authenticateToken, async (req, res) => {
+app.get('/consultations', authenticateToken, asyncHandler(async (req, res) => {
   const field = req.user.role === 'professional' ? 'professional_id' : 'user_id';
   const result = await pool.query(
     `SELECT
@@ -495,9 +498,9 @@ app.get('/consultations', authenticateToken, async (req, res) => {
   );
 
   return res.json({ consultations: result.rows });
-});
+}));
 
-app.patch('/consultations/:id/status', authenticateToken, async (req, res) => {
+app.patch('/consultations/:id/status', authenticateToken, asyncHandler(async (req, res) => {
   const { status } = req.body || {};
   const allowed = ['requested', 'scheduled', 'completed', 'declined'];
 
@@ -526,9 +529,9 @@ app.patch('/consultations/:id/status', authenticateToken, async (req, res) => {
 
   await pool.query('UPDATE consultations SET status = $1 WHERE id = $2', [status, req.params.id]);
   return res.json({ success: true });
-});
+}));
 
-app.post('/providers/:id/reviews', authenticateToken, async (req, res) => {
+app.post('/providers/:id/reviews', authenticateToken, asyncHandler(async (req, res) => {
   if (!['user', 'admin'].includes(req.user.role)) {
     return res.sendStatus(403);
   }
@@ -575,9 +578,9 @@ app.post('/providers/:id/reviews', authenticateToken, async (req, res) => {
   );
 
   return res.json({ success: true });
-});
+}));
 
-app.post('/tracking', authenticateToken, async (req, res) => {
+app.post('/tracking', authenticateToken, asyncHandler(async (req, res) => {
   const { period_start_date, mood, symptoms } = req.body || {};
   if (!period_start_date || !mood || !symptoms) {
     return res.status(400).json({ error: 'Period date, mood, and symptoms are required.' });
@@ -593,9 +596,9 @@ app.post('/tracking', authenticateToken, async (req, res) => {
     console.error('Tracking save error:', err.message);
     return res.status(500).json({ error: 'Failed to save record.' });
   }
-});
+}));
 
-app.get('/tracking/predict', authenticateToken, async (req, res) => {
+app.get('/tracking/predict', authenticateToken, asyncHandler(async (req, res) => {
   const result = await pool.query(
     'SELECT period_start_date, mood FROM tracking_logs WHERE user_id = $1 ORDER BY period_start_date ASC',
     [req.user.id]
@@ -664,9 +667,9 @@ app.get('/tracking/predict', authenticateToken, async (req, res) => {
     regularityScore,
     advice
   });
-});
+}));
 
-app.get('/tracking/:user_id', authenticateToken, async (req, res) => {
+app.get('/tracking/:user_id', authenticateToken, asyncHandler(async (req, res) => {
   if (Number(req.params.user_id) !== req.user.id && req.user.role !== 'admin') {
     return res.sendStatus(403);
   }
@@ -676,9 +679,9 @@ app.get('/tracking/:user_id', authenticateToken, async (req, res) => {
     [req.params.user_id]
   );
   return res.json({ logs: result.rows });
-});
+}));
 
-app.post('/ad-removal/watch', authenticateToken, async (req, res) => {
+app.post('/ad-removal/watch', authenticateToken, asyncHandler(async (req, res) => {
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   await pool.query('UPDATE users SET ad_removal_expires_at = $1 WHERE id = $2', [expiresAt, req.user.id]);
@@ -691,9 +694,9 @@ app.post('/ad-removal/watch', authenticateToken, async (req, res) => {
   );
 
   return res.json({ expires_at: expiresAt });
-});
+}));
 
-app.get('/admin/overview', authenticateToken, requireAdmin, async (_req, res) => {
+app.get('/admin/overview', authenticateToken, requireAdmin, asyncHandler(async (_req, res) => {
   const [total, pending, active, posts, partnerVideos] = await Promise.all([
     pool.query('SELECT COUNT(*) FROM users'),
     pool.query("SELECT COUNT(*) FROM users WHERE role = 'professional' AND verified = false"),
@@ -711,52 +714,52 @@ app.get('/admin/overview', authenticateToken, requireAdmin, async (_req, res) =>
       partnerVideos: Number(partnerVideos.rows[0].count)
     }
   });
-});
+}));
 
-app.get('/admin/users', authenticateToken, requireAdmin, async (_req, res) => {
+app.get('/admin/users', authenticateToken, requireAdmin, asyncHandler(async (_req, res) => {
   const result = await pool.query('SELECT * FROM users ORDER BY created_at DESC');
   return res.json({ users: result.rows.map(publicUser) });
-});
+}));
 
-app.get('/admin/professionals/pending', authenticateToken, requireAdmin, async (_req, res) => {
+app.get('/admin/professionals/pending', authenticateToken, requireAdmin, asyncHandler(async (_req, res) => {
   const result = await pool.query(
     "SELECT * FROM users WHERE role = 'professional' AND verified = false ORDER BY created_at DESC"
   );
   return res.json({ professionals: result.rows.map(publicUser) });
-});
+}));
 
-app.post('/admin/professionals/:id/verify', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/admin/professionals/:id/verify', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
   await pool.query(
     "UPDATE users SET verified = true, kyc_status = 'approved' WHERE id = $1 AND role = 'professional'",
     [req.params.id]
   );
   return res.json({ success: true });
-});
+}));
 
-app.patch('/admin/users/:id/status', authenticateToken, requireAdmin, async (req, res) => {
+app.patch('/admin/users/:id/status', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
   const { isActive } = req.body || {};
   await pool.query('UPDATE users SET is_active = $1 WHERE id = $2', [Boolean(isActive), req.params.id]);
   return res.json({ success: true });
-});
+}));
 
-app.get('/admin/posts', authenticateToken, requireAdmin, async (_req, res) => {
+app.get('/admin/posts', authenticateToken, requireAdmin, asyncHandler(async (_req, res) => {
   const result = await pool.query('SELECT * FROM posts ORDER BY created_at DESC');
   return res.json({ posts: result.rows.map(publicPost) });
-});
+}));
 
-app.get('/admin/posts/pending', authenticateToken, requireAdmin, async (_req, res) => {
+app.get('/admin/posts/pending', authenticateToken, requireAdmin, asyncHandler(async (_req, res) => {
   const result = await pool.query(
     "SELECT * FROM posts WHERE status = 'pending' ORDER BY created_at DESC"
   );
   return res.json({ posts: result.rows.map(publicPost) });
-});
+}));
 
-app.post('/admin/posts/:id/approve', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/admin/posts/:id/approve', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
   await pool.query("UPDATE posts SET status = 'approved' WHERE id = $1", [req.params.id]);
   return res.json({ success: true });
-});
+}));
 
-app.post('/admin/videos', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/admin/videos', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
   const { title, description, url, category, thumbnail, createdBy, isPartnerAd = true } = req.body || {};
 
   if (!title || !url) {
@@ -789,19 +792,19 @@ app.post('/admin/videos', authenticateToken, requireAdmin, async (req, res) => {
   );
 
   return res.json({ success: true, video: publicVideo(result.rows[0]) });
-});
+}));
 
-app.get('/admin/videos', authenticateToken, requireAdmin, async (_req, res) => {
+app.get('/admin/videos', authenticateToken, requireAdmin, asyncHandler(async (_req, res) => {
   const result = await pool.query('SELECT * FROM videos ORDER BY created_at DESC');
   return res.json({ videos: result.rows.map(publicVideo) });
-});
+}));
 
-app.get('/admin/platform-settings', authenticateToken, requireAdmin, async (_req, res) => {
+app.get('/admin/platform-settings', authenticateToken, requireAdmin, asyncHandler(async (_req, res) => {
   const settings = await getPlatformSettings();
   return res.json({ settings });
-});
+}));
 
-app.patch('/admin/platform-settings', authenticateToken, requireAdmin, async (req, res) => {
+app.patch('/admin/platform-settings', authenticateToken, requireAdmin, asyncHandler(async (req, res) => {
   const { chatbotEnabled, aiProviderPreference, ollamaModel, geminiModel, xaiModel, openaiModel, huggingFaceModel } = req.body || {};
   const settings = await updatePlatformSettings({
     chatbotEnabled,
@@ -814,7 +817,7 @@ app.patch('/admin/platform-settings', authenticateToken, requireAdmin, async (re
   });
 
   return res.json({ success: true, settings });
-});
+}));
 
 app.use('/chat', authenticateToken, require('./chat'));
 
@@ -844,8 +847,26 @@ if (fs.existsSync(clientDistPath)) {
   });
 }
 
+app.use((error, _req, res, next) => {
+  console.error('Unhandled request error:', error);
+
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  return res.status(error.status || 500).json({
+    error: error.publicMessage || 'Server error'
+  });
+});
+
 const startServer = async () => {
-  await initDb();
+  try {
+    await initDb();
+  } catch (err) {
+    console.error('CRITICAL: Database initialization failed. Server will not start.');
+    process.exit(1);
+  }
+
   const server = app.listen(PORT, HOST, () => console.log(`Backend running on http://${HOST}:${PORT}`));
 
   server.on('error', (error) => {
@@ -859,6 +880,17 @@ const startServer = async () => {
     console.error('Failed to start backend server:', error);
     process.exit(1);
   });
+
+  // Support graceful shutdown for local development and cloud providers like Render
+  const shutdown = (signal) => {
+    console.log(`\nReceived ${signal}. Closing server...`);
+    server.close(() => {
+      console.log('Server shut down successfully.');
+      process.exit(0);
+    });
+  };
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
 };
 
 startServer();

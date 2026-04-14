@@ -24,11 +24,11 @@ services:
         sync: false
       - key: ADMIN_PHONE
         value: +250780000000
-      - key: XAI_API_KEY
+      - key: GEMINI_API_KEY
         sync: false
       - key: AI_PROVIDER_PREFERENCE
-        value: xai
-      - key: XAI_MODEL
-        value: grok-3-mini
+        value: gemini
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
 databases:
   - name: nsobanuza-db

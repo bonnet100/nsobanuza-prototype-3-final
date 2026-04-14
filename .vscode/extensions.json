@@ -2,6 +2,7 @@
   "recommendations": [
     "google.geminicodeassist",
     "kingleo.deepseek-web",
-    "codeium.codeium"
+    "codeium.codeium",
+    "multi.multi-nightly"
   ]
 }

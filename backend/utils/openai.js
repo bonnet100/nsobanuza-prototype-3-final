@@ -214,6 +214,10 @@ function createProviderError(message, status, body) {
   return error;
 }
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function getOllamaAvailableModels(platformSettings = {}) {
   if (!Array.isArray(platformSettings.ollamaAvailableModels)) {
     return [];
@@ -273,13 +277,24 @@ function mapProviderError(error) {
   if (
     error instanceof OpenAI.APIConnectionError ||
     error?.code === 'ENOTFOUND' ||
+    error?.code === 'ECONNRESET' ||
+    error?.code === 'ETIMEDOUT' ||
     error?.cause?.code === 'ENOTFOUND' ||
+    error?.cause?.code === 'ECONNRESET' ||
+    error?.cause?.code === 'ETIMEDOUT' ||
     error?.name === 'TypeError'
   ) {
     return 'connection_error';
   }
 
   return 'service_unavailable';
+}
+
+function shouldRetryGeminiError(error) {
+  return [
+    error?.code,
+    error?.cause?.code
+  ].some((code) => ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND'].includes(code)) || error?.name === 'TypeError';
 }
 
 function buildGeminiRequestBody(message, language, history) {
@@ -319,27 +334,41 @@ async function sendGeminiRequest(message, language, history, model, stream = fal
   }
 
   const endpoint = stream ? 'streamGenerateContent?alt=sse' : 'generateContent';
-  const response = await fetch(
-    `${GEMINI_API_BASE}/${model}:${endpoint}`,
-    {
-      method: 'POST',
-      headers: {
-        'x-goog-api-key': process.env.GEMINI_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(buildGeminiRequestBody(message, language, history))
-    }
-  );
 
-  if (!response.ok) {
-    throw createProviderError(
-      `Gemini request failed with status ${response.status}.`,
-      response.status,
-      await response.text()
-    );
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetch(
+        `${GEMINI_API_BASE}/${model}:${endpoint}`,
+        {
+          method: 'POST',
+          headers: {
+            'x-goog-api-key': process.env.GEMINI_API_KEY,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(buildGeminiRequestBody(message, language, history))
+        }
+      );
+
+      if (!response.ok) {
+        throw createProviderError(
+          `Gemini request failed with status ${response.status}.`,
+          response.status,
+          await response.text()
+        );
+      }
+
+      return response;
+    } catch (error) {
+      if (attempt < 2 && shouldRetryGeminiError(error)) {
+        await wait(500 * (attempt + 1));
+        continue;
+      }
+
+      throw error;
+    }
   }
 
-  return response;
+  return null;
 }
 
 function extractTextFromGeminiPayload(payload) {
@@ -629,23 +658,23 @@ async function askWithHuggingFace(message, language, history, model) {
 
 function getProviderOrder(aiProviderPreference) {
   if (aiProviderPreference === 'ollama') {
-    return ['ollama', 'xai', 'openai', 'gemini', 'huggingface', 'builtin'];
+    return ['ollama', 'builtin'];
   }
 
   if (aiProviderPreference === 'gemini') {
-    return ['gemini', 'ollama', 'xai', 'openai', 'huggingface', 'builtin'];
+    return ['gemini', 'builtin'];
   }
 
   if (aiProviderPreference === 'huggingface') {
-    return ['huggingface', 'ollama', 'xai', 'gemini', 'openai', 'builtin'];
+    return ['huggingface', 'builtin'];
   }
 
   if (aiProviderPreference === 'xai') {
-    return ['xai', 'openai', 'gemini', 'huggingface', 'ollama', 'builtin'];
+    return ['xai', 'builtin'];
   }
 
   if (aiProviderPreference === 'openai') {
-    return ['openai', 'xai', 'gemini', 'huggingface', 'ollama', 'builtin'];
+    return ['openai', 'builtin'];
   }
 
   if (aiProviderPreference === 'builtin') {
