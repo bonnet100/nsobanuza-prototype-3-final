@@ -15,9 +15,10 @@ const initialVideoForm = {
 
 const initialPlatformSettings = {
   chatbotEnabled: true,
-  aiProviderPreference: 'ollama',
+  aiProviderPreference: 'auto',
   ollamaModel: 'qwen2.5:3b',
   geminiModel: 'gemini-2.5-flash',
+  xaiModel: 'grok-3-mini',
   openaiModel: 'gpt-5-mini',
   huggingFaceModel: 'Qwen/Qwen2.5-7B-Instruct',
   supportedLanguages: ['en', 'fr', 'rw', 'sw'],
@@ -25,6 +26,7 @@ const initialPlatformSettings = {
   providers: {
     ollamaConfigured: false,
     geminiConfigured: false,
+    xaiConfigured: false,
     openaiConfigured: false,
     huggingFaceConfigured: false,
     builtInConfigured: true
@@ -193,6 +195,7 @@ export default function Admin({ user }) {
         aiProviderPreference: platformSettings.aiProviderPreference,
         ollamaModel: platformSettings.ollamaModel,
         geminiModel: platformSettings.geminiModel,
+        xaiModel: platformSettings.xaiModel,
         openaiModel: platformSettings.openaiModel,
         huggingFaceModel: platformSettings.huggingFaceModel
       });
@@ -450,6 +453,7 @@ export default function Admin({ user }) {
                   <option value="auto">{t('adminAiProviderAuto')}</option>
                   <option value="ollama">{t('adminAiProviderOllama')}</option>
                   <option value="gemini">{t('adminAiProviderGemini')}</option>
+                  <option value="xai">{t('adminAiProviderXai')}</option>
                   <option value="huggingface">{t('adminAiProviderHuggingFace')}</option>
                   <option value="openai">{t('adminAiProviderOpenAI')}</option>
                   <option value="builtin">{t('adminAiProviderBuiltIn')}</option>
@@ -466,6 +470,12 @@ export default function Admin({ user }) {
                 value={platformSettings.geminiModel}
                 onChange={updatePlatformField('geminiModel')}
                 placeholder={t('adminGeminiModel')}
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none"
+              />
+              <input
+                value={platformSettings.xaiModel}
+                onChange={updatePlatformField('xaiModel')}
+                placeholder={t('adminXaiModel')}
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none"
               />
 
@@ -514,6 +524,12 @@ export default function Admin({ user }) {
                     <span>OpenAI</span>
                     <span className={platformSettings.providers?.openaiConfigured ? 'text-emerald-700' : 'text-amber-700'}>
                       {platformSettings.providers?.openaiConfigured ? t('adminConfigured') : t('adminNotConfigured')}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span>Grok / xAI</span>
+                    <span className={platformSettings.providers?.xaiConfigured ? 'text-emerald-700' : 'text-amber-700'}>
+                      {platformSettings.providers?.xaiConfigured ? t('adminConfigured') : t('adminNotConfigured')}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-3">

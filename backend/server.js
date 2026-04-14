@@ -1,5 +1,7 @@
 require('dotenv').config();
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
@@ -9,6 +11,7 @@ const { getPlatformSettings, updatePlatformSettings } = require('./utils/platfor
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 app.use(cors());
+const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 5000);
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -174,15 +177,15 @@ app.post('/auth/register', async (req, res) => {
   }
 
   try {
-    const existingProfessional = await pool.query(
+    const existingUser = await pool.query(
       `SELECT id FROM users
-       WHERE LOWER(email) = LOWER($1) OR license_number = $2
+       WHERE LOWER(username) = LOWER($1) OR phone = $2
        LIMIT 1`,
-      [email.trim().toLowerCase(), licenseNumber.trim()]
+      [username.trim(), phone.trim()]
     );
 
-    if (existingProfessional.rows[0]) {
-      return res.status(400).json({ error: 'That email or license number is already in use.' });
+    if (existingUser.rows[0]) {
+      return res.status(400).json({ error: 'Username or phone number already exists.' });
     }
 
     const hashed = await bcrypt.hash(password, 10);
@@ -799,12 +802,13 @@ app.get('/admin/platform-settings', authenticateToken, requireAdmin, async (_req
 });
 
 app.patch('/admin/platform-settings', authenticateToken, requireAdmin, async (req, res) => {
-  const { chatbotEnabled, aiProviderPreference, ollamaModel, geminiModel, openaiModel, huggingFaceModel } = req.body || {};
+  const { chatbotEnabled, aiProviderPreference, ollamaModel, geminiModel, xaiModel, openaiModel, huggingFaceModel } = req.body || {};
   const settings = await updatePlatformSettings({
     chatbotEnabled,
     aiProviderPreference,
     ollamaModel,
     geminiModel,
+    xaiModel,
     openaiModel,
     huggingFaceModel
   });
@@ -814,9 +818,35 @@ app.patch('/admin/platform-settings', authenticateToken, requireAdmin, async (re
 
 app.use('/chat', authenticateToken, require('./chat'));
 
+const clientDistPath = path.join(__dirname, '..', 'client', 'dist');
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/auth') || req.path.startsWith('/admin') || req.path.startsWith('/chat')) {
+      return next();
+    }
+
+    if (
+      req.path.startsWith('/posts') ||
+      req.path.startsWith('/videos') ||
+      req.path.startsWith('/books') ||
+      req.path.startsWith('/providers') ||
+      req.path.startsWith('/consultations') ||
+      req.path.startsWith('/tracking') ||
+      req.path.startsWith('/ad-removal') ||
+      req.path === '/health'
+    ) {
+      return next();
+    }
+
+    return res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+}
+
 const startServer = async () => {
   await initDb();
-  const server = app.listen(PORT, () => console.log(`Backend running on http://localhost:${PORT}`));
+  const server = app.listen(PORT, HOST, () => console.log(`Backend running on http://${HOST}:${PORT}`));
 
   server.on('error', (error) => {
     if (error.code === 'EADDRINUSE') {

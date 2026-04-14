@@ -186,6 +186,8 @@ export default function Chat() {
                 ? `${t('chatStatusOllamaLive')}${chatInfo.model ? ` ${chatInfo.model}.` : '.'}`
                 : chatInfo.provider === 'gemini'
                 ? `${t('chatStatusGeminiLive')}${chatInfo.model ? ` ${chatInfo.model}.` : '.'}`
+                : chatInfo.provider === 'xai'
+                ? `${t('chatStatusXaiLive')}${chatInfo.model ? ` ${chatInfo.model}.` : '.'}`
                 : chatInfo.provider === 'openai'
                 ? `${t('chatStatusOpenAiLive')}${chatInfo.model ? ` ${chatInfo.model}.` : '.'}`
                 : chatInfo.provider === 'huggingface'
@@ -195,6 +197,8 @@ export default function Chat() {
                     ? t('chatStatusDisabled')
                     : chatInfo.reason === 'ollama_not_configured'
                       ? t('chatStatusOllamaSetup')
+                    : chatInfo.reason === 'xai_not_configured'
+                      ? t('chatStatusXaiSetup')
                     : chatInfo.reason === 'insufficient_quota'
                       ? t('chatStatusQuotaFallback')
                     : chatInfo.reason === 'invalid_api_key'

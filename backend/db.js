@@ -169,9 +169,10 @@ const seedBooks = [
 
 const defaultPlatformSettings = [
   ['chatbot_enabled', 'true'],
-  ['ai_provider_preference', 'ollama'],
+  ['ai_provider_preference', process.env.AI_PROVIDER_PREFERENCE || 'auto'],
   ['ollama_model', process.env.OLLAMA_MODEL || 'qwen2.5:3b'],
   ['gemini_model', process.env.GEMINI_MODEL || 'gemini-2.5-flash'],
+  ['xai_model', process.env.XAI_MODEL || 'grok-3-mini'],
   ['openai_model', process.env.OPENAI_MODEL || 'gpt-5-mini'],
   ['huggingface_model', process.env.HUGGINGFACE_MODEL || 'Qwen/Qwen2.5-7B-Instruct']
 ];

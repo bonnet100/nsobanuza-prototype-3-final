@@ -1,10 +1,13 @@
 const { pool } = require('../db');
 
+const defaultAiProviderPreference = process.env.AI_PROVIDER_PREFERENCE || 'auto';
+
 const defaultPlatformSettings = {
   chatbotEnabled: true,
-  aiProviderPreference: 'ollama',
+  aiProviderPreference: defaultAiProviderPreference,
   ollamaModel: process.env.OLLAMA_MODEL || 'qwen2.5:3b',
   geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  xaiModel: process.env.XAI_MODEL || 'grok-3-mini',
   openaiModel: process.env.OPENAI_MODEL || 'gpt-5-mini',
   huggingFaceModel: process.env.HUGGINGFACE_MODEL || 'Qwen/Qwen2.5-7B-Instruct',
   supportedLanguages: ['en', 'fr', 'rw', 'sw']
@@ -31,6 +34,11 @@ const storedKeys = {
     parse: (value) => value || defaultPlatformSettings.geminiModel,
     serialize: (value) => String(value)
   },
+  xaiModel: {
+    key: 'xai_model',
+    parse: (value) => value || defaultPlatformSettings.xaiModel,
+    serialize: (value) => String(value)
+  },
   openaiModel: {
     key: 'openai_model',
     parse: (value) => value || defaultPlatformSettings.openaiModel,
@@ -44,7 +52,7 @@ const storedKeys = {
 };
 
 function normalizeProviderPreference(value) {
-  return ['auto', 'ollama', 'gemini', 'huggingface', 'openai', 'builtin'].includes(value)
+  return ['auto', 'ollama', 'gemini', 'huggingface', 'xai', 'openai', 'builtin'].includes(value)
     ? value
     : defaultPlatformSettings.aiProviderPreference;
 }
@@ -89,6 +97,7 @@ async function getPlatformSettings() {
     ),
     ollamaModel: storedKeys.ollamaModel.parse(values[storedKeys.ollamaModel.key]),
     geminiModel: storedKeys.geminiModel.parse(values[storedKeys.geminiModel.key]),
+    xaiModel: storedKeys.xaiModel.parse(values[storedKeys.xaiModel.key]),
     openaiModel: storedKeys.openaiModel.parse(values[storedKeys.openaiModel.key]),
     huggingFaceModel: storedKeys.huggingFaceModel.parse(values[storedKeys.huggingFaceModel.key]),
     supportedLanguages: defaultPlatformSettings.supportedLanguages,
@@ -96,6 +105,7 @@ async function getPlatformSettings() {
     providers: {
       ollamaConfigured: ollamaAvailableModels.length > 0,
       geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
+      xaiConfigured: Boolean(process.env.XAI_API_KEY),
       openaiConfigured: Boolean(process.env.OPENAI_API_KEY),
       huggingFaceConfigured: Boolean(process.env.HUGGINGFACE_API_KEY),
       builtInConfigured: true
@@ -133,6 +143,13 @@ async function updatePlatformSettings(payload = {}) {
     updates.push({
       key: storedKeys.geminiModel.key,
       value: storedKeys.geminiModel.serialize(payload.geminiModel.trim())
+    });
+  }
+
+  if (typeof payload.xaiModel === 'string' && payload.xaiModel.trim()) {
+    updates.push({
+      key: storedKeys.xaiModel.key,
+      value: storedKeys.xaiModel.serialize(payload.xaiModel.trim())
     });
   }
 

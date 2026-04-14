@@ -2,6 +2,7 @@ const OpenAI = require('openai');
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const OLLAMA_API_BASE = process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434';
+const XAI_API_BASE = 'https://api.x.ai/v1';
 
 const systemPrompt = `You are Nsobo, the Nsobanuza health education assistant for youth in Rwanda.
 Stay supportive, practical, stigma-free, and culturally respectful.
@@ -184,6 +185,17 @@ function getOpenAIClient() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
+function getXAIClient() {
+  if (!process.env.XAI_API_KEY) {
+    return null;
+  }
+
+  return new OpenAI({
+    apiKey: process.env.XAI_API_KEY,
+    baseURL: XAI_API_BASE
+  });
+}
+
 function getHuggingFaceClient() {
   if (!process.env.HUGGINGFACE_API_KEY) {
     return null;
@@ -232,6 +244,10 @@ function getMissingProviderReason(provider) {
 
   if (provider === 'huggingface') {
     return 'huggingface_not_configured';
+  }
+
+  if (provider === 'xai') {
+    return 'xai_not_configured';
   }
 
   if (provider === 'openai') {
@@ -537,6 +553,43 @@ async function askWithOpenAI(message, language, history, model) {
   };
 }
 
+async function askWithXAI(message, language, history, model) {
+  const client = getXAIClient();
+  if (!client) {
+    return null;
+  }
+
+  const response = await client.chat.completions.create({
+    model,
+    temperature: 0.4,
+    max_tokens: 500,
+    messages: [
+      {
+        role: 'system',
+        content: `${systemPrompt}\nAlways answer in ${getLanguageName(language)} with clear, youth-friendly wording.`
+      },
+      ...normalizeHistoryForChat(history),
+      {
+        role: 'user',
+        content: message
+      }
+    ]
+  });
+
+  const answer = response.choices?.[0]?.message?.content?.trim();
+  if (!answer) {
+    throw new Error('xAI returned an empty response.');
+  }
+
+  return {
+    answer,
+    provider: 'xai',
+    configured: true,
+    model,
+    reason: null
+  };
+}
+
 async function askWithHuggingFace(message, language, history, model) {
   const client = getHuggingFaceClient();
   if (!client) {
@@ -576,26 +629,30 @@ async function askWithHuggingFace(message, language, history, model) {
 
 function getProviderOrder(aiProviderPreference) {
   if (aiProviderPreference === 'ollama') {
-    return ['ollama', 'gemini', 'huggingface', 'openai', 'builtin'];
+    return ['ollama', 'xai', 'openai', 'gemini', 'huggingface', 'builtin'];
   }
 
   if (aiProviderPreference === 'gemini') {
-    return ['gemini', 'ollama', 'huggingface', 'openai', 'builtin'];
+    return ['gemini', 'ollama', 'xai', 'openai', 'huggingface', 'builtin'];
   }
 
   if (aiProviderPreference === 'huggingface') {
-    return ['huggingface', 'ollama', 'gemini', 'openai', 'builtin'];
+    return ['huggingface', 'ollama', 'xai', 'gemini', 'openai', 'builtin'];
+  }
+
+  if (aiProviderPreference === 'xai') {
+    return ['xai', 'openai', 'gemini', 'huggingface', 'ollama', 'builtin'];
   }
 
   if (aiProviderPreference === 'openai') {
-    return ['openai', 'ollama', 'gemini', 'huggingface', 'builtin'];
+    return ['openai', 'xai', 'gemini', 'huggingface', 'ollama', 'builtin'];
   }
 
   if (aiProviderPreference === 'builtin') {
     return ['builtin'];
   }
 
-  return ['ollama', 'gemini', 'huggingface', 'openai', 'builtin'];
+  return ['ollama', 'xai', 'openai', 'gemini', 'huggingface', 'builtin'];
 }
 
 function getProviderModels(platformSettings) {
@@ -603,6 +660,7 @@ function getProviderModels(platformSettings) {
     ollama: getOllamaModel(platformSettings),
     gemini: platformSettings.geminiModel || process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     huggingface: platformSettings.huggingFaceModel || process.env.HUGGINGFACE_MODEL || 'Qwen/Qwen2.5-7B-Instruct',
+    xai: platformSettings.xaiModel || process.env.XAI_MODEL || 'grok-3-mini',
     openai: platformSettings.openaiModel || process.env.OPENAI_MODEL || 'gpt-5-mini'
   };
 }
@@ -613,6 +671,7 @@ function getConfiguredProviders(platformSettings = {}, models = {}) {
   return {
     ollama: ollamaAvailableModels.includes(models.ollama || getOllamaModel(platformSettings)),
     gemini: Boolean(process.env.GEMINI_API_KEY),
+    xai: Boolean(process.env.XAI_API_KEY),
     openai: Boolean(process.env.OPENAI_API_KEY),
     huggingface: Boolean(process.env.HUGGINGFACE_API_KEY)
   };
@@ -639,8 +698,8 @@ async function askOpenAI(message, language, history = [], platformSettings = {})
       return {
         answer: fallbackResponse(message, language),
         provider: 'fallback',
-        configured: configured.ollama || configured.gemini || configured.huggingface || configured.openai,
-        model: models.ollama || models.gemini || models.huggingface || models.openai || null,
+        configured: configured.ollama || configured.xai || configured.gemini || configured.huggingface || configured.openai,
+        model: models.ollama || models.xai || models.gemini || models.huggingface || models.openai || null,
         reason: latestReason || 'builtin_fallback'
       };
     }
@@ -663,6 +722,10 @@ async function askOpenAI(message, language, history = [], platformSettings = {})
         return await askWithHuggingFace(message, language, history, models.huggingface);
       }
 
+      if (provider === 'xai') {
+        return await askWithXAI(message, language, history, models.xai);
+      }
+
       if (provider === 'openai') {
         return await askWithOpenAI(message, language, history, models.openai);
       }
@@ -675,8 +738,8 @@ async function askOpenAI(message, language, history = [], platformSettings = {})
   return {
     answer: fallbackResponse(message, language),
     provider: 'fallback',
-    configured: configured.ollama || configured.gemini || configured.huggingface || configured.openai,
-    model: models.ollama || models.gemini || models.huggingface || models.openai || null,
+    configured: configured.ollama || configured.xai || configured.gemini || configured.huggingface || configured.openai,
+    model: models.ollama || models.xai || models.gemini || models.huggingface || models.openai || null,
     reason: latestReason || 'provider_not_configured'
   };
 }
@@ -700,8 +763,8 @@ async function streamAssistantResponse(message, language, history = [], platform
     if (provider === 'builtin') {
       onMeta({
         provider: 'fallback',
-        configured: configured.ollama || configured.gemini || configured.huggingface || configured.openai,
-        model: models.ollama || models.gemini || models.huggingface || models.openai || null,
+        configured: configured.ollama || configured.xai || configured.gemini || configured.huggingface || configured.openai,
+        model: models.ollama || models.xai || models.gemini || models.huggingface || models.openai || null,
         reason: latestReason || 'builtin_fallback'
       });
       onDelta(fallbackResponse(message, language));
@@ -733,6 +796,13 @@ async function streamAssistantResponse(message, language, history = [], platform
         return;
       }
 
+      if (provider === 'xai') {
+        const result = await askWithXAI(message, language, history, models.xai);
+        onMeta(result);
+        onDelta(result.answer);
+        return;
+      }
+
       if (provider === 'openai') {
         const result = await askWithOpenAI(message, language, history, models.openai);
         onMeta(result);
@@ -747,8 +817,8 @@ async function streamAssistantResponse(message, language, history = [], platform
 
   onMeta({
     provider: 'fallback',
-    configured: configured.ollama || configured.gemini || configured.huggingface || configured.openai,
-    model: models.ollama || models.gemini || models.huggingface || models.openai || null,
+    configured: configured.ollama || configured.xai || configured.gemini || configured.huggingface || configured.openai,
+    model: models.ollama || models.xai || models.gemini || models.huggingface || models.openai || null,
     reason: latestReason || 'provider_not_configured'
   });
   onDelta(fallbackResponse(message, language));

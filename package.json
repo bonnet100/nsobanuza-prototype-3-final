@@ -8,6 +8,8 @@
     "frontend"
   ],
   "scripts": {
+    "start": "npm --prefix backend run start",
+    "build:client": "npm --prefix client run build",
     "server": "npm --prefix backend run server",
     "dev": "npm --prefix client run dev",
     "dev:full": "concurrently \"npm run server\" \"npm run dev:client\"",
