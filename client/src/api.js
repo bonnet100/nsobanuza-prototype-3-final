@@ -1,7 +1,14 @@
-const API_BASE = import.meta.env.VITE_API_BASE || '';
+const tokenKey = 'nsobanuza_token';
+const LIVE_API_BASE = 'https://nsobanuza-prototype-3-final-backend.vercel.app';
+const configuredApiBase = import.meta.env.VITE_API_BASE || import.meta.env.VITE_API_URL;
+const API_BASE = String(
+  configuredApiBase || (import.meta.env.DEV ? '' : LIVE_API_BASE)
+).replace(/\/+$/, '');
+
+const buildUrl = (path) => `${API_BASE}${formatPath(path)}`;
 
 const getHeaders = (optionsHeaders = {}) => {
-  const token = localStorage.getItem('nsobanuza_token');
+  const token = localStorage.getItem(tokenKey);
   const headers = {
     'Content-Type': 'application/json',
     ...optionsHeaders,
@@ -12,19 +19,44 @@ const getHeaders = (optionsHeaders = {}) => {
   return headers;
 };
 
-const api = {
-  get: (path, options = {}) => fetch(`${API_BASE}${path}`, { ...options, method: 'GET', headers: getHeaders(options.headers) }),
-  post: (path, body, options = {}) => fetch(`${API_BASE}${path}`, { ...options, method: 'POST', headers: getHeaders(options.headers), body: JSON.stringify(body) }),
-  stream: (path, body, options = {}) => fetch(`${API_BASE}${path}`, { ...options, method: 'POST', headers: getHeaders(options.headers), body: JSON.stringify(body) }),
-  put: (path, body, options = {}) => fetch(`${API_BASE}${path}`, { ...options, method: 'PUT', headers: getHeaders(options.headers), body: JSON.stringify(body) }),
-  patch: (path, body, options = {}) => fetch(`${API_BASE}${path}`, { ...options, method: 'PATCH', headers: getHeaders(options.headers), body: JSON.stringify(body) })
+// Helper to ensure paths start with a slash and handle the /auth prefix correctly
+const formatPath = (path) => {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  // If the component calls '/login', we redirect it to '/auth/login' to match your backend
+  if (cleanPath === '/login' || cleanPath === '/register' || cleanPath === '/me') {
+    return `/auth${cleanPath}`;
+  }
+  return cleanPath;
 };
 
-const tokenKey = 'nsobanuza_token';
+const request = (method, path, body, options = {}) => {
+  const config = {
+    ...options,
+    method,
+    headers: getHeaders(options.headers)
+  };
+
+  if (body !== undefined) {
+    config.body = JSON.stringify(body);
+  }
+
+  return fetch(buildUrl(path), config);
+};
+
+const api = {
+  get: (path, options = {}) => request('GET', path, undefined, options),
+  post: (path, body, options = {}) => request('POST', path, body, options),
+  put: (path, body, options = {}) => request('PUT', path, body, options),
+  patch: (path, body, options = {}) => request('PATCH', path, body, options),
+  delete: (path, options = {}) => request('DELETE', path, undefined, options),
+  stream: (path, body, options = {}) => request('POST', path, body, options)
+};
 
 const setToken = (value) => {
   if (value) {
     localStorage.setItem(tokenKey, value);
+  } else {
+    localStorage.removeItem(tokenKey);
   }
 };
 
